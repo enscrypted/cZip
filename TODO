@@ -1,3 +1,4 @@
 1. Extra input validity checks
 2. Interim file deletion (only leave desired end file, remove rest that currently are created)
-3. Extenstion preservation (current idea: during compression, store file extension as txt and compress with file, read on decompress and add to filename, store after black pixel in stego and add 2nd black pixel if no compression is done)
+3. Extenstion preservation (current idea: during compression, store file extension as txt and compress with file,
+read on decompress and add to filename, store after black pixel in stego and add 2nd black pixel if no compression is done)
