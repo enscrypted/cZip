@@ -3,14 +3,8 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
-# Set to Qt installation path
-QT_PATH_UNIX = ~/Qt/5.14.2/gcc_64
+# Set to Qt installation path if Windows
 QT_PATH_WIN = C:/Qt/Qt5.14.2/5.14.2/mingw73_64
-
-# Set library and include paths
-unix {
-    QMAKE_LFLAGS += -L$(QT_PATH_UNIX)/lib
-}
 
 # SOURCES
 SOURCES += \
