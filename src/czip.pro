@@ -2,7 +2,15 @@ QT       += core gui
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
-QMAKE_LFLAGS += -L~/Qt/5.14.2/gcc_64/lib
+
+# Set to Qt installation path
+QT_PATH_UNIX = ~/Qt/5.14.2/gcc_64
+QT_PATH_WIN = C:/Qt/Qt5.14.2/5.14.2/mingw73_64
+
+# Set library and include paths
+unix {
+    QMAKE_LFLAGS += -L$(QT_PATH_UNIX)/lib
+}
 
 # SOURCES
 SOURCES += \
@@ -26,14 +34,13 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 # Platform-specific QCA configuration
 win32 {
-    # QCA for Windows (Qt 5.15.2 MinGW)
-    INCLUDEPATH += $$PWD/../../../../Qt/5.15.2/mingw81_64/include/Qca-qt5/QtCrypto
-    DEPENDPATH  += $$PWD/../../../../Qt/5.15.2/mingw81_64/include/Qca-qt5/QtCrypto
-    CONFIG(release, debug|release): LIBS += -L$$PWD/../../../../Qt/5.15.2/mingw81_64/lib/ -llibqca-qt5
-    CONFIG(debug, debug|release):   LIBS += -L$$PWD/../../../../Qt/5.15.2/mingw81_64/lib/ -llibqca-qt5
+    # QCA for Windows
+    INCLUDEPATH += $(QT_PATH_WIN)/include/Qca-qt5/QtCrypto
+    DEPENDPATH  += $(QT_PATH_WIN)/include/Qca-qt5/QtCrypto
+    CONFIG(release, debug|release): LIBS += -L"$(QT_PATH_WIN)/lib/" -lqca-qt5
+    CONFIG(debug, debug|release):   LIBS += -L"$(QT_PATH_WIN)/lib/" -lqca-qt5
 } else:unix {
     # QCA for Linux using pkg-config
     CONFIG += link_pkgconfig
     PKGCONFIG += qca2-qt5
 }
-
