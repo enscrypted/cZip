@@ -29,10 +29,10 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 # Platform-specific QCA configuration
 win32 {
     # QCA for Windows
-    INCLUDEPATH += $(QT_PATH_WIN)/include/Qca-qt5/QtCrypto
-    DEPENDPATH  += $(QT_PATH_WIN)/include/Qca-qt5/QtCrypto
-    CONFIG(release, debug|release): LIBS += -L"$(QT_PATH_WIN)/lib/" -lqca-qt5
-    CONFIG(debug, debug|release):   LIBS += -L"$(QT_PATH_WIN)/lib/" -lqca-qt5
+    INCLUDEPATH += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
+    DEPENDPATH  += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
+    CONFIG(release, debug|release): LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
+    CONFIG(debug, debug|release):   LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
 } else:unix {
     # QCA for Linux using pkg-config
     CONFIG += link_pkgconfig
