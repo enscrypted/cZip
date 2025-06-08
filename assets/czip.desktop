@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=cZip
+Exec=czip
+Icon=czip
+Categories=Utility;
+Terminal=false
