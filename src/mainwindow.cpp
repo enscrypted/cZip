@@ -3,7 +3,13 @@
 #include <QFileDialog>
 #include <QtWidgets>
 #include <QThread>
-#include <QtCrypto>
+
+#ifdef Q_OS_MACX
+  #include <qca.h>
+#else
+  #include <QtCrypto>
+#endif
+
 #include "simplecrypt.h"
 
 Q_DECLARE_METATYPE(QCA::KeyStoreEntry);

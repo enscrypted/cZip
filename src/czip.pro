@@ -42,6 +42,43 @@ win32 {
     DEPENDPATH  += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
     CONFIG(release, debug|release): LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
     CONFIG(debug, debug|release):   LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
+} else:macx {
+    # This block provides two ways to find the QCA library:
+    # 1. (For the build script) A QCA_PREFIX variable passed on the command line.
+    # 2. (For Qt Creator) A fallback that checks for a standard Homebrew installation.
+
+    # First, check if the prefix is being passed by our build script.
+    !isEmpty(QCA_PREFIX) {
+        message("Using QCA path from build script: $$QCA_PREFIX")
+        # For macOS frameworks, the headers are in a different location
+        INCLUDEPATH += $$QCA_PREFIX/lib/qca-qt5.framework/Headers
+        # And we need to link it as a framework, not a standard library
+        LIBS += -F$$QCA_PREFIX/lib -framework qca-qt5
+    } else {
+        # If not, this is likely a Qt Creator build. Try to find Homebrew's QCA.
+        message("QCA_PREFIX not set, searching for a Homebrew installation...")
+
+        # Path for Apple Silicon Homebrew
+        if(exists(/opt/homebrew/opt/qca)) {
+            message("Found QCA at Apple Silicon Homebrew path.")
+            QCA_HOMEBREW_PREFIX = /opt/homebrew/opt/qca
+        # Path for Intel Homebrew
+        } else: if(exists(/usr/local/opt/qca)) {
+            message("Found QCA at Intel Homebrew path.")
+            QCA_HOMEBREW_PREFIX = /usr/local/opt/qca
+        }
+
+        # If we found a Homebrew path, use it.
+        !isEmpty(QCA_HOMEBREW_PREFIX) {
+            INCLUDEPATH += $$QCA_HOMEBREW_PREFIX/include/Qca-qt5
+            LIBS += -L$$QCA_HOMEBREW_PREFIX/lib -lqca-qt5
+        } else {
+            warning("Could not find QCA. Build will likely fail. Please install via 'brew install qca' or use the build script.")
+        }
+    }
+
+    # Set the application icon
+    ICON = ../assets/czip.icns
 } else:unix {
     # QCA for Linux using pkg-config
     CONFIG += link_pkgconfig
