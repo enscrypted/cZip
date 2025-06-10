@@ -3,8 +3,14 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
-# Set to Qt installation path if Windows
-QT_PATH_WIN = C:/Qt/Qt5.14.2/5.14.2/mingw73_64
+# Set to Qt installation path if Windows.
+# Can be overridden by passing QT_INSTALL_PATH to qmake from the command line.
+# Example: qmake my.pro QT_INSTALL_PATH="C:/Custom/Qt/Path"
+!isEmpty(QT_INSTALL_PATH) {
+    QT_PATH_WIN = $$QT_INSTALL_PATH
+} else {
+    QT_PATH_WIN = C:/Qt/5.15.2/msvc2019_64 # Default path inside the Docker container
+}
 
 # SOURCES
 SOURCES += \
@@ -28,6 +34,9 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 # Platform-specific QCA configuration
 win32 {
+	#Desktop Icon
+	RC_FILE = app_icon.rc
+	
     # QCA for Windows
     INCLUDEPATH += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
     DEPENDPATH  += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
