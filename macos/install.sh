@@ -62,6 +62,11 @@ if [ ! -f "$X86_PYTHON_PATH" ]; then
     exit 1
 fi
 
+# --- Initialize Submodules (AURA) ---
+echo "⚙️ Initializing and updating Git submodules (AURA and Botan)..."
+cd "$CZIP_DIR"
+git submodule update --init --recursive
+cd "$(dirname "$0")" # Return to script directory
 
 echo "=================================================================="
 echo "Starting ${TARGET_ARCH} build..."

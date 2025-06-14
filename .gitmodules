@@ -1,0 +1,3 @@
+[submodule "external/AURA"]
+	path = external/AURA
+	url = https://github.com/enscrypted/AURA.git

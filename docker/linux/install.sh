@@ -26,6 +26,12 @@ CZIP_DIR=$(realpath "$CZIP_DIR")
 echo "Using cZip directory: $CZIP_DIR"
 echo "Skip AppImage: $SKIP_APPIMAGE"
 
+# Ensure AURA and Botan source code is checked out before building.
+echo "Initializing and updating Git submodules..."
+cd "$CZIP_DIR"
+git submodule update --init --recursive
+cd "$SCRIPT_DIR"
+
 # Build Docker image
 echo "Building Docker image 'qt5.14-qca'..."
 docker build -t qt5.14-qca "$(dirname "$0")"
@@ -37,15 +43,14 @@ rm -rf "$CZIP_DIR/src/build"
 # Run build
 echo "Running build..."
 docker run --rm -it \
-  -v "$CZIP_DIR/src":/src \
-  -w /src \
+  -v "$CZIP_DIR":/project \
+  -w /project/build/linux \
   qt5.14-qca \
   bash -c "\
     export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/opt/Qt/5.15.2/gcc_64/lib/pkgconfig && \
     export LD_LIBRARY_PATH=/usr/lib:/opt/Qt/5.15.2/gcc_64/lib && \
     export QMAKEFEATURES=/usr/mkspecs/features && \
-    mkdir -p build && cd build && \
-    /opt/Qt/5.15.2/gcc_64/bin/qmake ../czip.pro && \
+    /opt/Qt/5.15.2/gcc_64/bin/qmake ../../src/czip.pro && \
     make"
 
 # Run AppImage step (if not skipped)
@@ -55,13 +60,12 @@ if [ "$SKIP_APPIMAGE" = false ]; then
     --device /dev/fuse \
     --cap-add SYS_ADMIN \
     --security-opt apparmor:unconfined \
-    -v "$CZIP_DIR/src":/src \
-    -v "$CZIP_DIR/assets":/assets \
-    -w /src/build \
+    -v "$CZIP_DIR":/project \
+    -w /project/build/linux \
     qt5.14-qca \
     bash -c "\
-      cp /assets/czip.desktop . && \
-      cp /assets/czip.png . && \
+      cp /project/assets/czip.desktop . && \
+      cp /project/assets/czip.png . && \
       /usr/local/bin/linuxdeployqt ./czip -appimage && \
       mv cZip-*.AppImage cZip.AppImage"
 else

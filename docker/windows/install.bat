@@ -33,6 +33,18 @@ set "CZIP_DIR_DOCKER=%CZIP_DIR:\=/%"
 echo "Using project root: %PROJECT_ROOT%"
 echo "Using cZip directory: %CZIP_DIR%"
 
+:: --- Initialize Git Submodules (AURA) ---
+echo "Initializing and updating Git submodules..."
+pushd "%PROJECT_ROOT%"
+git submodule update --init --recursive
+if %errorlevel% neq 0 (
+    echo "ERROR: Git submodule update failed."
+    popd
+    exit /b 1
+)
+popd
+echo "Submodules updated successfully."
+
 :: --- Docker Image Build ---
 :: Temporarily change to the project root to set the Docker build context,
 :: then run the build command, then change back.
