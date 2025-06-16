@@ -31,14 +31,21 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 # platform-specific QCA configuration
 win32 {
-    # desktop Icon
+    # Desktop Icon
     RC_FILE = app_icon.rc
 
-    # QCA for Windows
-    INCLUDEPATH += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
-    DEPENDPATH  += $$QT_PATH_WIN/include/Qca-qt5/QtCrypto
-    CONFIG(release, debug|release): LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
-    CONFIG(debug, debug|release):  LIBS += -L$$QT_PATH_WIN/lib/ -lqca-qt5
+    # QCA for Windows - Dynamic Path Detection
+    # The $$[QT_INSTALL_HEADERS] property automatically points to the include/
+    # directory of the currently active Qt Kit (be it MSVC or MinGW).
+    message("Using Qt Headers from: $$[QT_INSTALL_HEADERS]")
+    QCA_INCLUDE_PATH = $$[QT_INSTALL_HEADERS]/Qca-qt5/QtCrypto
+    INCLUDEPATH += $$QCA_INCLUDE_PATH
+    DEPENDPATH  += $$QCA_INCLUDE_PATH
+
+    # The $$[QT_INSTALL_LIBS] property points to the correct lib/ directory.
+    message("Using Qt Libs from: $$[QT_INSTALL_LIBS]")
+    QCA_LIB_PATH = $$[QT_INSTALL_LIBS]
+    LIBS += -L$$QCA_LIB_PATH -lqca-qt5
 } else:macx {
     # this block provides two ways to find the QCA library:
     # 1. a QCA_PREFIX variable passed on the command line.
@@ -76,23 +83,46 @@ win32 {
     PKGCONFIG += qca2-qt5
 }
 
-# Define AURA paths
-AURA_SOURCES_DIR = $$PWD/../external/AURA
-AURA_BUILD_DIR   = $$AURA_SOURCES_DIR/build
-AURA_INSTALL_DIR = $$AURA_BUILD_DIR/deps_install 
+# AURA
+AURA_PROJECT_DIR = $$PWD/../external/AURA
+AURA_BUILD_DIR   = $$AURA_PROJECT_DIR/build
+AURA_INSTALL_DIR = $$AURA_BUILD_DIR/deps_install
 
 aura_build.target = $$AURA_INSTALL_DIR/lib/libAURA.a
-
-# run the entire AURA super-build
-aura_build.commands = \
-    cmake -B $$AURA_BUILD_DIR $$AURA_SOURCES_DIR && \
-    cmake --build $$AURA_BUILD_DIR
-
-aura_build.depends = $$AURA_SOURCES_DIR/src/AURA.cpp
 QMAKE_EXTRA_TARGETS += aura_build
-
-# wait for AURA to be built
 PRE_TARGETDEPS += $$aura_build.target
 
+win32 {
+    msvc {
+        CMAKE_GENERATOR = "NMake Makefiles"
+        BOTAN_ARGS = # MSVC is Botan's default
+
+        NATIVE_SCRIPT_PATH = $$shell_path($$AURA_PROJECT_DIR/build.bat)
+        NATIVE_AURA_BUILD_DIR = $$shell_path($$AURA_BUILD_DIR)
+        NATIVE_AURA_PROJECT_DIR = $$shell_path($$AURA_PROJECT_DIR)
+
+        # AURA has a build .bat for msvc
+        aura_build.commands = $$NATIVE_SCRIPT_PATH \"$$NATIVE_AURA_BUILD_DIR\" \"$$NATIVE_AURA_PROJECT_DIR\" \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\" -DAURA_DISABLE_TESTS=ON
+
+    } else {
+        CMAKE_GENERATOR = "MinGW Makefiles"
+        BOTAN_ARGS = --os=mingw;--disable-modules=certstor_system,certstor_system_windows
+
+        # AURA has a build .sh for mingw
+        aura_build.commands = sh $$AURA_PROJECT_DIR/build.sh $$AURA_BUILD_DIR $$AURA_PROJECT_DIR \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\"
+    }
+} else:unix {
+    aura_build.commands = \
+        cmake -B $$AURA_BUILD_DIR $$AURA_PROJECT_DIR && \
+        cmake --build $$AURA_BUILD_DIR --target botan_dependency && \
+        cmake --build $$AURA_BUILD_DIR --target aura_library
+}
+
 INCLUDEPATH += $$AURA_INSTALL_DIR/include
-LIBS += -L$$AURA_INSTALL_DIR/lib -lAURA -lbotan-2
+LIBS += -L$$AURA_INSTALL_DIR/lib
+
+msvc {
+    LIBS += AURA.lib botan.lib
+} else {
+    LIBS += -lAURA -lbotan-2
+}

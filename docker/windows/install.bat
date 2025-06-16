@@ -66,7 +66,7 @@ if exist "%CZIP_DIR%\src\build" rd /s /q "%CZIP_DIR%\src\build"
 mkdir "%CZIP_DIR%\src\build" 2>NUL
 
 echo "Running application build (qmake and nmake) inside Docker container..."
-docker run --rm -it --mount type=bind,source="%CZIP_DIR_DOCKER%/src",target=C:/project/src -w C:/project/src qt5.15-qca-win cmd /c "C:\project\build_app.bat"
+docker run --rm -it --mount type=bind,source="%CZIP_DIR_DOCKER%",target=C:/project -w C:/project/src qt5.15-qca-win cmd /c "C:\project\docker\windows\build_app.bat"
 if %errorlevel% neq 0 (
     echo "ERROR: Application compilation failed."
     exit /b 1
@@ -89,8 +89,8 @@ if "%SKIP_DEPLOYMENT%"=="false" (
     set "TEMP_DEPLOY_DIR_HOST=%CZIP_DIR%\src\build\deployed_app"
 
     echo "Running deployment script inside container..."
-    docker run --rm -it --mount type=bind,source="%CZIP_DIR_DOCKER%/src",target=C:/project/src qt5.15-qca-win cmd /c "C:\project\deploy_app.bat"
-    if %errorlevel% neq 0 (
+    docker run --rm -it --mount type=bind,source="%CZIP_DIR_DOCKER%",target=C:/project -w C:/project/src qt5.15-qca-win cmd /c "C:\project\docker\windows\deploy_app.bat"
+	if %errorlevel% neq 0 (
         echo "ERROR: Deployment script failed."
         exit /b 1
     )
