@@ -18,6 +18,7 @@ SOURCES += \
     simplecrypt.cpp
 
 HEADERS += \
+    fileformat.h \
     mainwindow.h \
     simplecrypt.h
 

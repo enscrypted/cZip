@@ -509,7 +509,7 @@ QRadioButton { font-size: 20px; }</string>
        </property>
       </widget>
      </widget>
-     <widget class="QPushButton" name="seededGen">
+     <widget class="QPushButton" name="auraGen">
       <property name="geometry">
        <rect>
         <x>160</x>
@@ -528,7 +528,7 @@ QRadioButton { font-size: 20px; }</string>
        <string>Generate</string>
       </property>
      </widget>
-     <widget class="QLineEdit" name="seededKey">
+     <widget class="QLineEdit" name="auraKey">
       <property name="geometry">
        <rect>
         <x>20</x>
@@ -565,7 +565,7 @@ QRadioButton { font-size: 20px; }</string>
       <property name="frameShadow">
        <enum>QFrame::Raised</enum>
       </property>
-      <widget class="QRadioButton" name="seeded">
+      <widget class="QRadioButton" name="aura">
        <property name="geometry">
         <rect>
          <x>10</x>
@@ -586,7 +586,7 @@ QRadioButton { font-size: 20px; }</string>
 QRadioButton { font-size: 20px; }</string>
        </property>
        <property name="text">
-        <string>Seeded</string>
+        <string>AURA</string>
        </property>
       </widget>
       <widget class="QRadioButton" name="lsb">
@@ -616,8 +616,8 @@ QRadioButton { font-size: 20px; }</string>
      </widget>
      <zorder>frame_2</zorder>
      <zorder>slctImgFrame</zorder>
-     <zorder>seededGen</zorder>
-     <zorder>seededKey</zorder>
+     <zorder>auraGen</zorder>
+     <zorder>auraKey</zorder>
     </widget>
     <zorder>concOpts</zorder>
     <zorder>conceal</zorder>
@@ -844,7 +844,7 @@ QCheckBox { font-size: 22px;}</string>
      <x>0</x>
      <y>0</y>
      <width>927</width>
-     <height>26</height>
+     <height>21</height>
     </rect>
    </property>
   </widget>
