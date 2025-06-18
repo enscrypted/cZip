@@ -56,6 +56,9 @@ docker run --rm -it \
 # Run AppImage step (if not skipped)
 if [ "$SKIP_APPIMAGE" = false ]; then
   echo "Creating AppImage..."
+
+  BOTAN_INSTALL_LIB_PATH="/project/external/AURA/build/deps_install/lib"
+
   docker run --rm -it \
     --device /dev/fuse \
     --cap-add SYS_ADMIN \
@@ -64,6 +67,7 @@ if [ "$SKIP_APPIMAGE" = false ]; then
     -w /project/build/linux \
     qt5.14-qca \
     bash -c "\
+      export LD_LIBRARY_PATH=${BOTAN_INSTALL_LIB_PATH}:$LD_LIBRARY_PATH && \
       cp /project/assets/czip.desktop . && \
       cp /project/assets/czip.png . && \
       /usr/local/bin/linuxdeployqt ./czip -appimage && \
