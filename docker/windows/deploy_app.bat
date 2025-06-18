@@ -1,4 +1,4 @@
-:: Final deploy_app.bat
+:: deploy_app.bat
 @echo off
 setlocal
 
@@ -12,6 +12,7 @@ set "OPENSSL_BIN_PATH=C:\Program Files\OpenSSL-Win64\bin"
 
 set "APP_EXE_PATH=C:\project\src\build\release\czip.exe"
 set "DEPLOY_DIR=C:\project\src\build\deployed_app"
+set "AURA_DEPS_INSTALL_PATH=C:\project\external\AURA\build\deps_install\bin" 
 
 :: 1. Create the deployment directory before using it
 echo "--- Creating deployment directory..."
@@ -50,7 +51,26 @@ echo "--- Copying OpenSSL DLLs..."
 copy "%OPENSSL_BIN_PATH%\*.dll" "%DEPLOY_DIR%\"
 if %errorlevel% neq 0 ( exit /b 1 )
 
-:: 8. Clean up unused directories created by windeployqt
+:: 8. Copy Botan DLLs
+echo "--- Copying Botan DLLs..."
+if exist "%AURA_DEPS_INSTALL_PATH%\botan.dll" (
+    copy "%AURA_DEPS_INSTALL_PATH%\botan.dll" "%DEPLOY_DIR%\"
+    echo "Copied botan.dll"
+) else if exist "%AURA_DEPS_INSTALL_PATH%\botand.dll" (
+    copy "%AURA_DEPS_INSTALL_PATH%\botand.dll" "%DEPLOY_DIR%\"
+    echo "Copied botand.dll"
+) else if exist "%AURA_DEPS_INSTALL_PATH%\botan-2.dll" (
+    copy "%AURA_DEPS_INSTALL_PATH%\botan-2.dll" "%DEPLOY_DIR%\"
+    echo "Copied botan-2.dll"
+) else if exist "%AURA_DEPS_INSTALL_PATH%\botan-2d.dll" (
+    copy "%AURA_DEPS_INSTALL_PATH%\botan-2d.dll" "%DEPLOY_DIR%\"
+    echo "Copied botan-2d.dll"
+) else (
+    echo "WARNING: Neither botan.dll, botand.dll, botan-2.dll, nor botan-2d.dll found in Botan install path. Botan might be statically linked or missing."
+    exit /b 1
+)
+
+:: 9. Clean up unused directories created by windeployqt
 echo "--- Cleaning up unused directories..."
 if exist "%DEPLOY_DIR%\translations" rd /s /q "%DEPLOY_DIR%\translations"
 if exist "%DEPLOY_DIR%\styles" rd /s /q "%DEPLOY_DIR%\styles"
