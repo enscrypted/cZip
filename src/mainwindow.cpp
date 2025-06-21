@@ -645,21 +645,44 @@ bool MainWindow::encrypt_aes(ProcessingJob& job)
     CzipContainer container;
     if(!read_czip_container(job, container)) { return false; }
 
-    QByteArray passphrase = ui->aesKey->text().toUtf8();
-    QByteArray key_data = QCA::Hash("sha256").hash(passphrase).toByteArray();
-    QByteArray key = key_data.left(32);
-    QByteArray iv = key_data.mid(0, 16);
+    // check if the qca provider supports the pbkdf2 algorithm with sha1
+    if(!QCA::isSupported("pbkdf2(sha1)")) {
+        display_error("AES Encryption Error", "The QCA provider does not support PBKDF2-SHA1.");
+        return false;
+    }
 
+    // generate a cryptographically random 16-byte iv to ensure semantic security
+    QCA::InitializationVector iv(16);
+
+    QCA::PBKDF2 kdf("sha1");
+
+    // use the valid kdf object to stretch the user's passphrase into a strong key
+    QCA::SymmetricKey symKey = kdf.makeKey(
+                                   QCA::SecureArray(ui->aesKey->text().toUtf8()), // secret
+                                   iv,                                           // salt
+                                   100000,                                       // iteration count
+                                   32                                            // key length in bytes
+                               );
+
+    if(symKey.isNull()) {
+        display_error("AES Encryption Error", "Key derivation failed and returned a null key.");
+        return false;
+    }
+
+    // initialize the cipher with the derived key and unique iv
     QCA::Cipher cipher(QStringLiteral("aes256"), QCA::Cipher::CBC,
-                       QCA::Cipher::PKCS7, QCA::Encode, key, iv);
+                       QCA::Cipher::PKCS7, QCA::Encode, symKey, iv);
 
-    QByteArray encrypted_payload = cipher.update(container.payload).toByteArray();
-    encrypted_payload += cipher.final().toByteArray();
+    QByteArray ciphertext = cipher.update(container.payload).toByteArray();
+    ciphertext += cipher.final().toByteArray();
 
     if(!cipher.ok()) {
         display_error("AES Encryption Error", "QCA failed to encrypt the data.");
         return false;
     }
+
+    // prepend the iv/salt to the ciphertext for use during decryption
+    QByteArray encrypted_payload = iv.toByteArray() + ciphertext;
 
     container.op_stack.prepend(CZipFormat::OperationCode::ENCRYPT_AES);
 
@@ -988,6 +1011,7 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
     QDataStream in_stream(&input_file);
     in_stream.setByteOrder(QDataStream::BigEndian);
 
+    // read and validate the file header
     CZipFormat::FileHeader header;
     if(in_stream.readRawData(reinterpret_cast<char*>(&header), sizeof(header)) != sizeof(header) ||
        memcmp(header.magic, CZipFormat::MAGIC, sizeof(header.magic)) != 0) {
@@ -996,6 +1020,7 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
         return false;
     }
 
+    // read the operation stack from the file
     QList<CZipFormat::OperationCode> op_stack;
     for(uint8_t i = 0; i < header.op_count; ++i) {
         uint8_t op_code_byte;
@@ -1004,29 +1029,52 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
     }
 
     if(op_stack.isEmpty() || op_stack.first() != CZipFormat::OperationCode::ENCRYPT_AES) {
-        display_error("Operation Error", "File was not encrypted with the AES algorithm. Cannot perform AES decryption.");
+        display_error("Operation Error", "File was not encrypted with the AES algorithm.");
         input_file.close();
         return false;
     }
 
+    // read the original filename from the header
     uint16_t filename_len;
     in_stream >> filename_len;
     QByteArray original_filename_utf8;
     original_filename_utf8.resize(filename_len);
     in_stream.readRawData(original_filename_utf8.data(), filename_len);
 
-    QByteArray encrypted_payload = input_file.readAll();
+    QByteArray encrypted_payload_with_iv = input_file.readAll();
     input_file.close();
 
-    // derive key and iv exactly as in encryption
-    QByteArray passphrase = ui->aesKey->text().toUtf8();
-    QByteArray key_data = QCA::Hash("sha256").hash(passphrase).toByteArray();
-    QByteArray key = key_data.left(32);
-    QByteArray iv = key_data.mid(0, 16);
-    QCA::Cipher cipher(QStringLiteral("aes256"), QCA::Cipher::CBC,
-                       QCA::Cipher::PKCS7, QCA::Decode, key, iv);
+    // extract the 16-byte iv/salt that was prepended to the payload
+    const int iv_and_salt_size = 16;
+    if (encrypted_payload_with_iv.size() < iv_and_salt_size) {
+        display_error("AES Decryption Error", "File is too small to contain a valid IV.");
+        return false;
+    }
+    QByteArray iv_and_salt_bytes = encrypted_payload_with_iv.left(iv_and_salt_size);
+    QCA::InitializationVector saltAsIV(iv_and_salt_bytes);
+    QByteArray ciphertext = encrypted_payload_with_iv.mid(iv_and_salt_size);
 
-    QByteArray decrypted_payload = cipher.update(encrypted_payload).toByteArray();
+    // create the KDF object, then check if it's valid before using it
+    QCA::PBKDF2 kdf("sha1");
+
+    // re-derive the key using the same pbkdf2 parameters and salt as encryption
+    QCA::SymmetricKey symKey = kdf.makeKey(
+                                   QCA::SecureArray(ui->aesKey->text().toUtf8()), // secret
+                                   saltAsIV,                                     // salt
+                                   100000,                                       // iteration count
+                                   32                                            // key length in bytes
+                               );
+
+    if(symKey.isNull()){
+        display_error("AES Decryption Error", "Key derivation failed. Passphrase may be incorrect.");
+        return false;
+    }
+
+    // initialize the cipher with the derived key and extracted iv
+    QCA::Cipher cipher(QStringLiteral("aes256"), QCA::Cipher::CBC,
+                       QCA::Cipher::PKCS7, QCA::Decode, symKey, saltAsIV);
+
+    QByteArray decrypted_payload = cipher.update(ciphertext).toByteArray();
     decrypted_payload += cipher.final().toByteArray();
 
     if(!cipher.ok()) {
@@ -1034,6 +1082,7 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
         return false;
     }
 
+    // write new intermediate file or final restored file with an updated header
     QString original_base_name = QFileInfo(job.originalFile).baseName();
     QString new_file_path = job.outputFolder + original_base_name + ".czip";
     QFile output_file(new_file_path);
