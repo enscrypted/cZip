@@ -120,6 +120,7 @@ win32 {
 }
 
 INCLUDEPATH += $$AURA_INSTALL_DIR/include
+INCLUDEPATH += $$AURA_INSTALL_DIR/include/botan-2
 LIBS += -L$$AURA_INSTALL_DIR/lib
 
 msvc {
