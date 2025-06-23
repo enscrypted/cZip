@@ -66,10 +66,13 @@ Combine both options:
 
 ## What It Does
 
-1. Builds the Docker image using `Dockerfile`.
-2. Removes any previous `/src/build/` directory.
-3. Compiles the project using `qmake` and `make` inside Docker.
-4. If not skipped, packages the binary into an AppImage using `linuxdeployqt`.
+1.  **Builds the Docker Image:** Creates a self-contained build environment using the `Dockerfile`, which includes all necessary build tools, Qt 5.15, and the required X11 libraries for AppImage packaging.
+2.  **Initializes Dependencies:** The `install.sh` script ensures the `AURA` and `Botan` git submodules are checked out.
+3.  **Runs the Build Script:** A container is started, which executes the `build.sh` script to perform a controlled, multi-stage compilation:
+    1.  **Builds Botan:** First, it compiles the `Botan` cryptography library from source.
+    2.  **Builds AURA:** Next, it compiles the `AURA` steganography library, linking it against the newly built Botan library.
+    3.  **Builds cZip:** Finally, it compiles the main `cZip` application, linking it against the pre-built `AURA` and `Botan` libraries.
+4.  **Packages the AppImage:** If not skipped, it uses `linuxdeployqt` to package the final `czip` executable and all its dependencies into a single, portable AppImage file.
 
 ## Output
 

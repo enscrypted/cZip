@@ -62,11 +62,11 @@ if [ ! -f "$X86_PYTHON_PATH" ]; then
     exit 1
 fi
 
-# --- Initialize Submodules (AURA) ---
+# --- Initialize Submodules ---
 echo "⚙️ Initializing and updating Git submodules (AURA and Botan)..."
 cd "$CZIP_DIR"
 git submodule update --init --recursive
-cd "$(dirname "$0")" # Return to script directory
+cd "$(dirname "$0")"
 
 echo "=================================================================="
 echo "Starting ${TARGET_ARCH} build..."
@@ -76,7 +76,7 @@ echo "=================================================================="
 # --- Directory Setup ---
 BUILD_ENV_DIR="$CZIP_DIR/build_env_macos/$TARGET_ARCH"
 SRC_BUILD_DIR="$CZIP_DIR/src/build_macos_$TARGET_ARCH"
-QCA_INSTALL_DIR="$BUILD_ENV_DIR/qca_install"
+DEPS_FINAL_INSTALL_DIR="$BUILD_ENV_DIR/deps_install"
 VENV_DIR="$BUILD_ENV_DIR/python_venv" 
 
 echo "  -> Wiping previous build environment to ensure a clean slate..."
@@ -84,7 +84,7 @@ rm -rf "$BUILD_ENV_DIR"
 
 # --- Environment Setup Phase ---
 echo "Setting up isolated build environment for ${TARGET_ARCH}..."
-mkdir -p "$BUILD_ENV_DIR" "$QCA_INSTALL_DIR"
+mkdir -p "$BUILD_ENV_DIR" "$DEPS_FINAL_INSTALL_DIR"
 
 echo "   -> Setting up local x86_64 Python virtual environment..."
 "$X86_PYTHON_PATH" -m venv "$VENV_DIR"
@@ -104,35 +104,45 @@ if [ -z "$QT_INSTALL_DIR" ] || [ ! -d "$QT_INSTALL_DIR/lib/cmake/Qt5" ]; then
 fi
 echo "  -> Found Qt installation at: $QT_INSTALL_DIR"
 
-QCA_SRC_DIR="$BUILD_ENV_DIR/qca"
-git clone https://github.com/KDE/qca.git "$QCA_SRC_DIR"
-
-QCA_CMAKE_FILE="$QCA_SRC_DIR/CMakeLists.txt"
-if grep -q "find_package(Qt5 5.14" "$QCA_CMAKE_FILE"; then
-    echo "  -> Patching QCA's CMakeLists.txt to require Qt 5.15..."
-    sed -i '' 's/find_package(Qt5 5.14/find_package(Qt5 5.15/' "$QCA_CMAKE_FILE"
-fi
-
-echo "Building QCA for $TARGET_ARCH..."
-mkdir -p "$QCA_SRC_DIR/build"
-cd "$QCA_SRC_DIR/build"
-
 SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
 
-arch -${TARGET_ARCH} cmake .. -GNinja \
+# --- Build Botan ---
+echo "Building Botan for $TARGET_ARCH..."
+BOTAN_SRC_DIR="$CZIP_DIR/external/AURA/external/botan"
+BOTAN_BUILD_DIR_LOCAL="$BOTAN_SRC_DIR/build"
+mkdir -p "$BOTAN_BUILD_DIR_LOCAL"
+cd "$BOTAN_SRC_DIR"
+arch -${TARGET_ARCH} "$X86_PYTHON_PATH" configure.py \
+    --prefix="$DEPS_FINAL_INSTALL_DIR" \
+    --cc=clang \
+    --with-os-features=darwin
+
+arch -${TARGET_ARCH} make -j$(sysctl -n hw.ncpu)
+arch -${TARGET_ARCH} make install
+cd "$CZIP_DIR"
+echo "Botan build complete."
+
+# --- Build AURA ---
+echo "Building AURA and installing to shared prefix..."
+AURA_SRC_DIR="$CZIP_DIR/external/AURA"
+AURA_BUILD_DIR="$AURA_SRC_DIR/build"
+mkdir -p "$AURA_BUILD_DIR"
+cd "$AURA_BUILD_DIR"
+
+arch -${TARGET_ARCH} cmake .. \
+    -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_PREFIX_PATH="$QT_INSTALL_DIR" \
-    -DQt5_DIR="$QT_INSTALL_DIR/lib/cmake/Qt5" \
+    -DCMAKE_INSTALL_PREFIX="$DEPS_FINAL_INSTALL_DIR" \
+    -DAURA_USE_SYSTEM_BOTAN=ON \
+    -DBOTAN_INCLUDE_DIR="$DEPS_FINAL_INSTALL_DIR/include/botan-2" \
+    -DBOTAN_LIBRARY_DIR="$DEPS_FINAL_INSTALL_DIR/lib" \
     -DCMAKE_OSX_SYSROOT="$SDK_PATH" \
-    -DCMAKE_INSTALL_PREFIX="$QCA_INSTALL_DIR" \
-    -DBUILD_PLUGINS="ossl" \
-    -DQCA_SUFFIX=qt5
+    -DCMAKE_OSX_ARCHITECTURES="${TARGET_ARCH}"
 
 arch -${TARGET_ARCH} ninja
-arch -${TARGET_ARCH} ninja install
+arch -${TARGET_ARCH} cmake --install .
 cd "$CZIP_DIR"
-
-echo "QCA build complete."
+echo "AURA build complete."
 
 # --- Build Project Phase ---
 echo "⚙️ Compiling $APP_NAME for ${TARGET_ARCH}..."
@@ -142,12 +152,13 @@ cd "$SRC_BUILD_DIR"
 
 OPENSSL_PREFIX=$(arch -x86_64 "$X86_BREW_PATH" --prefix openssl@3)
 
-echo "   -> Running qmake with direct paths..."
+echo "   -> Running qmake to configure and build cZip..."
 arch -${TARGET_ARCH} "$QT_INSTALL_DIR/bin/qmake" \
     "$PROJECT_PRO_FILE" \
     "CONFIG+=sdk_no_version_check" \
-    "QCA_PREFIX=$QCA_INSTALL_DIR" \
-    "OPENSSL_PREFIX=$OPENSSL_PREFIX"
+    "CONFIG+=use_prebuilt_deps" \
+    "OPENSSL_PREFIX=$OPENSSL_PREFIX" \
+    "DEPS_PREFIX=$DEPS_FINAL_INSTALL_DIR"
 
 arch -${TARGET_ARCH} make -j$(sysctl -n hw.ncpu)
 
@@ -157,25 +168,23 @@ echo "Compilation complete."
 echo "Packaging application..."
 APP_BUNDLE="$SRC_BUILD_DIR/$APP_NAME.app"
 
-# Use macdeployqt with -libpath to automatically find and deploy the QCA framework
-echo "   -> Running macdeployqt to deploy Qt and QCA frameworks..."
-arch -${TARGET_ARCH} "$QT_INSTALL_DIR/bin/macdeployqt" "$APP_BUNDLE" -always-overwrite -libpath="$QCA_INSTALL_DIR/lib"
+echo "   -> Running macdeployqt to deploy Qt frameworks..."
+arch -${TARGET_ARCH} "$QT_INSTALL_DIR/bin/macdeployqt" "$APP_BUNDLE" -always-overwrite
 
-echo "  -> Deploying QCA OpenSSL plugin..."
-QCA_PLUGIN_DIR="$APP_BUNDLE/Contents/PlugIns/crypto"
-mkdir -p "$QCA_PLUGIN_DIR"
-QCA_PLUGIN_SOURCE=$(find "$QCA_INSTALL_DIR/lib" -name "libqca-ossl.dylib")
-if [ -z "$QCA_PLUGIN_SOURCE" ]; then
-    echo "Warning: Could not find the QCA OpenSSL plugin to deploy."
+echo "  -> Deploying Botan dynamic library..."
+LIB_DEPLOY_DIR="$APP_BUNDLE/Contents/Frameworks"
+mkdir -p "$LIB_DEPLOY_DIR"
+
+BOTAN_DYLIB=$(find "$DEPS_FINAL_INSTALL_DIR/lib" -name "libbotan-2.dylib" | head -n 1)
+if [ -f "$BOTAN_DYLIB" ]; then
+    cp "$BOTAN_DYLIB" "$LIB_DEPLOY_DIR/"
 else
-    cp "$QCA_PLUGIN_SOURCE" "$QCA_PLUGIN_DIR/"
+    echo "Warning: Could not find Botan dylib at expected path: $BOTAN_DYLIB"
 fi
-# ---------------------------------------------------------
 
 echo "  -> Creating DMG..."
 DMG_NAME="$APP_NAME.dmg"
-hdiutil create "$DMG_NAME" -volname "$APP_NAME" -fs HFS+ -srcfolder "$APP_NAME.app"
-cd "$CZIP_DIR"
+hdiutil create "$DMG_NAME" -volname "$APP_NAME" -fs HFS+ -srcfolder "$APP_BUNDLE"
 
 echo ""
 echo "Success! Find your application for all Macs here:"

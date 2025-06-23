@@ -37,8 +37,10 @@ czip/
 │   └── ... (source files)
 ├── assets/
 │   ├── ... (icon files)
+├── external/
+│   └── AURA/
 └── macos/
-    └── install.sh  <-- The build script
+    └── install.sh
 ```
 
 ## Usage
@@ -64,21 +66,28 @@ czip/
 The `install.sh` script automates the entire build process:
 
 1.  **Checks for Prerequisites:** Verifies that the Intel version of Homebrew is installed (on Apple Silicon Macs).
+
 2.  **Installs Temporary Tools:** Uses the Intel Homebrew to temporarily install `x86_64` versions of CMake, Ninja, Python, and OpenSSL.
+
 3.  **Creates Isolated Environment:** Wipes any previous build and creates a clean build environment inside `build_env_macos/`.
+
 4.  **Downloads Qt:** Downloads an `x86_64` version of Qt 5.15.2 into the isolated environment.
-5.  **Builds Dependencies:** Clones and builds the QCA (Qt Crypto Abstraction) library from source against the downloaded Qt.
-6.  **Compiles Project:** Compiles cZip using `qmake` and `make`.
-7.  **Packages Application:** Uses `macdeployqt` to create a distributable `.app` bundle and then packages it into a `.dmg` disk image.
+
+5.  **Builds Dependencies:** Initializes Git submodules, then compiles and installs **Botan** and **AURA** (including its **Botan** submodule) into a shared temporary directory.
+
+6.  **Compiles Project:** Compiles cZip using `qmake` and `make`, linking against the newly built Botan and AURA libraries.
+
+7.  **Packages Application:** Uses `macdeployqt` to create a distributable `.app` bundle, including necessary Qt and Botan dynamic libraries, and then packages it into a `.dmg` disk image.
+
 8.  **Cleans Up:** Automatically uninstalls the temporary tools it installed via Homebrew, leaving your system state unchanged.
 
 ## Output
 
-- The compiled application bundle and related files will be in:
-  `czip/src/build_macos_x86_64/`
+* The compiled application bundle and related files will be in:
+    `czip/src/build_macos_x86_64/`
 
-- The final, distributable disk image will be saved as:
-  `czip/src/build_macos_x86_64/cZip.dmg`
+* The final, distributable disk image will be saved as:
+    `czip/src/build_macos_x86_64/cZip.dmg`
 
 ## Cleanup & Uninstallation
 
