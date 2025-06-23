@@ -34,54 +34,9 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 win32 {
     # Desktop Icon
     RC_FILE = app_icon.rc
-
-    # QCA for Windows - Dynamic Path Detection
-    # The $$[QT_INSTALL_HEADERS] property automatically points to the include/
-    # directory of the currently active Qt Kit (be it MSVC or MinGW).
-    message("Using Qt Headers from: $$[QT_INSTALL_HEADERS]")
-    QCA_INCLUDE_PATH = $$[QT_INSTALL_HEADERS]/Qca-qt5/QtCrypto
-    INCLUDEPATH += $$QCA_INCLUDE_PATH
-    DEPENDPATH  += $$QCA_INCLUDE_PATH
-
-    # The $$[QT_INSTALL_LIBS] property points to the correct lib/ directory.
-    message("Using Qt Libs from: $$[QT_INSTALL_LIBS]")
-    QCA_LIB_PATH = $$[QT_INSTALL_LIBS]
-    LIBS += -L$$QCA_LIB_PATH -lqca-qt5
 } else:macx {
-    # this block provides two ways to find the QCA library:
-    # 1. a QCA_PREFIX variable passed on the command line.
-    # 2. a fallback that checks for a standard Homebrew installation.
-    !isEmpty(QCA_PREFIX) {
-        message("Using QCA path from build script: $$QCA_PREFIX")
-        INCLUDEPATH += $$QCA_PREFIX/lib/qca-qt5.framework/Headers
-        LIBS += -F$$QCA_PREFIX/lib -framework qca-qt5
-    } else {
-        message("QCA_PREFIX not set, searching for a Homebrew installation...")
-
-        # path for Apple Silicon Homebrew
-        if(exists(/opt/homebrew/opt/qca)) {
-            message("Found QCA at Apple Silicon Homebrew path.")
-            QCA_HOMEBREW_PREFIX = /opt/homebrew/opt/qca
-        # path for Intel Homebrew
-        } else: if(exists(/usr/local/opt/qca)) {
-            message("Found QCA at Intel Homebrew path.")
-            QCA_HOMEBREW_PREFIX = /usr/local/opt/qca
-        }
-
-        !isEmpty(QCA_HOMEBREW_PREFIX) {
-            INCLUDEPATH += $$QCA_HOMEBREW_PREFIX/include/Qca-qt5
-            LIBS += -L$$QCA_HOMEBREW_PREFIX/lib -lqca-qt5
-        } else {
-            warning("Could not find QCA. Build will likely fail. Please install via 'brew install qca' or use the build script.")
-        }
-    }
-
     # application icon
     ICON = ../assets/czip.icns
-} else:unix {
-    # QCA for Linux using pkg-config
-    CONFIG += link_pkgconfig
-    PKGCONFIG += qca2-qt5
 }
 
 # AURA

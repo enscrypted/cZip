@@ -5,7 +5,15 @@
 #include <vector>
 #include <QString>
 #include <QList>
-#include <QtCrypto>
+#include <memory>
+
+// Use Botan for all cryptographic primatives
+#include <botan/auto_rng.h>
+#include <botan/hex.h>
+#include <botan/pbkdf2.h>
+#include <botan/cipher_mode.h>
+#include <botan/secmem.h>
+
 #include "AURA.h"
 #include "fileformat.h"
 
@@ -92,8 +100,9 @@ private:
     QImage gen_img(qint64 required_pixels);
     std::vector<unsigned char> hex_to_vector(const QString& hex);
     void aura_error(AURA_Result result);
+    QString generate_random_hex_key(size_t byte_length);
 
     Ui::MainWindow *ui;
-    QCA::Initializer qca_init;
+    Botan::AutoSeeded_RNG m_rng;
 };
 #endif // MAINWINDOW_H

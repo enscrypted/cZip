@@ -11,7 +11,7 @@ The application provides three primary pairs of operations:
     * To ensure optimal performance, the compression level is intelligently tiered based on file size: level 9 (maximum) is used for most files, which is reduced for files larger than 15GB to ensure speed.
 
 * **2. Encrypt / Decrypt**:
-    * **AES-256 (Recommended)**: A secure, industry-standard implementation provided by the Qt Cryptographic Architecture (QCA) framework. A 256-bit key and a 128-bit initialization vector are derived from a user-provided 96-character hex string.
+    * **AES-256 (Recommended)**: A secure, high-performance implementation using the **Botan** C++ cryptography library. A 256-bit encryption key is derived from a user-provided passphrase using PBKDF2-HMAC-SHA256, with a randomly generated 128-bit salt that also serves as the initialization vector (IV).
     * **SimpleCrypt**: A custom, lightweight 64-bit key algorithm for basic, non-critical obfuscation.
 
 * **3. Conceal / Reveal**:
@@ -46,7 +46,7 @@ The easiest way to use `cZip` is to download the latest official release. Portab
 
 ### Building from Source
 
-If you wish to build the application yourself, you will need **Qt 5.15** and the **Qt Cryptographic Architecture (QCA)** library installed. Additionally, for AURA steganography, the **Botan** cryptographic library is required (managed as a submodule). Detailed build instructions for each platform can be found in their respective `INSTALL.md` files:
+If you wish to build the application yourself, you will need **Qt 5.15**. The **Botan** cryptographic library is also required, but it is managed automatically as a Git submodule within the AURA directory and will be compiled along with the project. Detailed build instructions for each platform can be found in their respective `INSTALL.md` files:
 
 * **Windows**: See the instructions in `docker/windows/INSTALL.md`.
 * **Linux**: See the instructions in `docker/linux/INSTALL.md`.

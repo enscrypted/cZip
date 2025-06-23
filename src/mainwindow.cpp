@@ -1,7 +1,5 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <botan/pbkdf2.h>
-#include <botan/secmem.h>
 #include <QFileDialog>
 #include <QtWidgets>
 #include <QThread>
@@ -13,15 +11,8 @@
 #include <cstring>
 #include <vector>
 
-#ifdef Q_OS_MACX
-  #include <qca.h>
-#else
-  #include <QtCrypto>
-#endif
-
 #include "simplecrypt.h"
 
-Q_DECLARE_METATYPE(QCA::KeyStoreEntry);
 
 //
 // constructor / destructor
@@ -648,52 +639,41 @@ bool MainWindow::encrypt_aes(ProcessingJob& job)
     CzipContainer container;
     if(!read_czip_container(job, container)) { return false; }
 
-    // generate a cryptographically random 16-byte iv to use as the salt
-    QCA::InitializationVector iv(16);
-    QByteArray salt_qba = iv.toByteArray();
+    try {
+        // Derive key from passphrase using PBKDF2
+        std::string passphrase = ui->aesKey->text().toStdString();
+        const size_t key_output_len = 32; // 256-bit key
+        const size_t iv_len = 16;         // 128-bit IV for AES/CBC
+        Botan::secure_vector<uint8_t> salt = m_rng.random_vec(iv_len); // Use random salt, which will also be our IV
+        Botan::secure_vector<uint8_t> derived_key(key_output_len);
+        std::unique_ptr<Botan::PBKDF> pbkdf(Botan::get_pbkdf("PBKDF2(HMAC(SHA-256))"));
+        pbkdf->pbkdf(derived_key.data(), derived_key.size(), passphrase, salt.data(), salt.size(), 100000, std::chrono::milliseconds(0));
 
-    // convert passphrase to a standard string for Botan
-    std::string passphrase = ui->aesKey->text().toStdString();
+        // Encrypt with Botan's Cipher_Mode
+        auto cipher = Botan::Cipher_Mode::create("AES-256/CBC/PKCS7", Botan::ENCRYPTION);
+        if(!cipher) {
+            display_error("AES Encryption Error", "Failed to create Botan AES cipher object.");
+            return false;
+        }
 
-    const size_t key_output_len = 32;
-    Botan::secure_vector<uint8_t> key_vec(key_output_len);
+        cipher->set_key(derived_key);
+        cipher->start(salt.data(), salt.size()); // Use the salt as the IV
 
-    // create the PRF (HMAC with SHA-256) for PBKDF2
-    std::unique_ptr<Botan::MessageAuthenticationCode> hmac(Botan::MessageAuthenticationCode::create("HMAC(SHA-256)"));
-    if(!hmac) {
-        display_error("AES Encryption Error", "Failed to create Botan HMAC(SHA-256) object.");
+        Botan::secure_vector<uint8_t> plaintext(container.payload.constData(), container.payload.constData() + container.payload.size());
+        cipher->finish(plaintext); // In-place encryption
+
+        // Prepend salt/IV to the ciphertext and write container
+        QByteArray encrypted_payload;
+        encrypted_payload.append(reinterpret_cast<const char*>(salt.data()), salt.size());
+        encrypted_payload.append(reinterpret_cast<const char*>(plaintext.data()), plaintext.size());
+
+        container.op_stack.prepend(CZipFormat::OperationCode::ENCRYPT_AES);
+        return write_czip_container(job, encrypted_payload, container.op_stack);
+
+    } catch (const Botan::Exception& e) {
+        display_error("AES Encryption Error", QString("A Botan cryptographic error occurred: %1").arg(e.what()));
         return false;
     }
-
-    // derive the key using Botan's PBKDF2 function
-    Botan::pbkdf2(*hmac,
-                  key_vec.data(), key_vec.size(),
-                  passphrase,
-                  (const uint8_t*)salt_qba.constData(), salt_qba.size(),
-                  100000, // Iteration count
-                  std::chrono::milliseconds(0) // Timeout (0 = no timeout)
-                  );
-
-    QCA::SymmetricKey symKey(QByteArray(reinterpret_cast<const char*>(key_vec.data()), key_vec.size()));
-
-    // initialize the QCA cipher with the key derived from Botan
-    QCA::Cipher cipher(QStringLiteral("aes256"), QCA::Cipher::CBC,
-                       QCA::Cipher::PKCS7, QCA::Encode, symKey, iv);
-
-    QByteArray ciphertext = cipher.update(container.payload).toByteArray();
-    ciphertext += cipher.final().toByteArray();
-
-    if(!cipher.ok()) {
-        display_error("AES Encryption Error", "QCA failed to encrypt the data.");
-        return false;
-    }
-
-    // prepend the salt (which is the iv) to the ciphertext
-    QByteArray encrypted_payload = salt_qba + ciphertext;
-
-    container.op_stack.prepend(CZipFormat::OperationCode::ENCRYPT_AES);
-
-    return write_czip_container(job, encrypted_payload, container.op_stack);
 }
 
 // handles lsb steganography
@@ -1030,9 +1010,9 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
     // read the operation stack from the file
     QList<CZipFormat::OperationCode> op_stack;
     for(uint8_t i = 0; i < header.op_count; ++i) {
-        uint8_t op_code_byte;
-        in_stream >> op_code_byte;
-        op_stack.append(static_cast<CZipFormat::OperationCode>(op_code_byte));
+        uint8_t op;
+        in_stream >> op;
+        op_stack.append(static_cast<CZipFormat::OperationCode>(op));
     }
 
     if(op_stack.isEmpty() || op_stack.first() != CZipFormat::OperationCode::ENCRYPT_AES) {
@@ -1044,85 +1024,96 @@ bool MainWindow::decrypt_aes(ProcessingJob& job) {
     // read the original filename from the header
     uint16_t filename_len;
     in_stream >> filename_len;
-    QByteArray original_filename_utf8;
-    original_filename_utf8.resize(filename_len);
+    QByteArray original_filename_utf8(filename_len, Qt::Uninitialized);
     in_stream.readRawData(original_filename_utf8.data(), filename_len);
+    QString original_filename = QString::fromUtf8(original_filename_utf8);
 
     QByteArray encrypted_payload_with_salt = input_file.readAll();
     input_file.close();
 
-    // extract the 16-byte salt (which is also the iv)
-    const int salt_size = 16;
-    if (encrypted_payload_with_salt.size() < salt_size) {
-        display_error("AES Decryption Error", "File is too small to contain a valid IV/salt.");
-        return false;
-    }
-    QByteArray salt_qba = encrypted_payload_with_salt.left(salt_size);
-    QCA::InitializationVector iv(salt_qba);
-    QByteArray ciphertext = encrypted_payload_with_salt.mid(salt_size);
+    QByteArray decrypted_payload;
+    try {
+        // extract the 16-byte salt, which also serves as the IV
+        const int salt_size = 16;
+        if (encrypted_payload_with_salt.size() < salt_size) {
+            display_error("AES Decryption Error", "File is too small to contain a valid IV/salt.");
+            return false;
+        }
+        QByteArray salt_qba = encrypted_payload_with_salt.left(salt_size);
+        QByteArray ciphertext_qba = encrypted_payload_with_salt.mid(salt_size);
 
-    // convert passphrase to a standard string for Botan
-    std::string passphrase = ui->aesKey->text().toStdString();
+        // re-derive the key from the user-provided passphrase using PBKDF2
+        std::string passphrase = ui->aesKey->text().toStdString();
+        const size_t key_output_len = 32;
+        Botan::secure_vector<uint8_t> derived_key(key_output_len);
+        std::unique_ptr<Botan::PBKDF> pbkdf(Botan::get_pbkdf("PBKDF2(HMAC(SHA-256))"));
 
-    const size_t key_output_len = 32;
-    Botan::secure_vector<uint8_t> key_vec(key_output_len);
+        pbkdf->pbkdf(derived_key.data(), derived_key.size(), passphrase,
+                     reinterpret_cast<const uint8_t*>(salt_qba.constData()), salt_qba.size(), 100000, std::chrono::milliseconds(0));
 
-    // create the PRF (HMAC with SHA-256) for PBKDF2
-    std::unique_ptr<Botan::MessageAuthenticationCode> hmac(Botan::MessageAuthenticationCode::create("HMAC(SHA-256)"));
-    if(!hmac) {
-        display_error("AES Decryption Error", "Failed to create Botan HMAC(SHA-256) object.");
-        return false;
-    }
+        // decrypt the payload using the derived key and salt/IV
+        auto cipher = Botan::Cipher_Mode::create("AES-256/CBC/PKCS7", Botan::DECRYPTION);
+        if(!cipher) {
+            display_error("AES Decryption Error", "Failed to create Botan AES cipher object.");
+            return false;
+        }
+        cipher->set_key(derived_key);
+        cipher->start(reinterpret_cast<const uint8_t*>(salt_qba.constData()), salt_qba.size());
 
-    // re-derive the key using the same Botan PBKDF2 parameters
-    Botan::pbkdf2(*hmac,
-                  key_vec.data(), key_vec.size(),
-                  passphrase,
-                  (const uint8_t*)salt_qba.constData(), salt_qba.size(),
-                  100000, // Iteration count
-                  std::chrono::milliseconds(0) // Timeout (0 = no timeout)
-                  );
+        Botan::secure_vector<uint8_t> ciphertext(reinterpret_cast<const uint8_t*>(ciphertext_qba.constData()),
+                                                 reinterpret_cast<const uint8_t*>(ciphertext_qba.constData()) + ciphertext_qba.size());
+        cipher->finish(ciphertext);
 
-    QCA::SymmetricKey symKey(QByteArray(reinterpret_cast<const char*>(key_vec.data()), key_vec.size()));
+        decrypted_payload = QByteArray(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
 
-    // initialize the QCA cipher with the derived key and extracted iv
-    QCA::Cipher cipher(QStringLiteral("aes256"), QCA::Cipher::CBC,
-                       QCA::Cipher::PKCS7, QCA::Decode, symKey, iv);
-
-    QByteArray decrypted_payload = cipher.update(ciphertext).toByteArray();
-    decrypted_payload += cipher.final().toByteArray();
-
-    if(!cipher.ok()) {
-        display_error("AES Decryption Error", "Decryption failed. The key is likely incorrect or the data is corrupt.");
+    } catch (const Botan::Exception& e) {
+        display_error("AES Decryption Error", QString("Decryption failed. The key is likely incorrect or the data is corrupt. Details: %1").arg(e.what()));
         return false;
     }
 
-    // write new intermediate file or final restored file
-    QString original_base_name = QFileInfo(job.originalFile).baseName();
-    QString new_file_path = job.outputFolder + original_base_name + ".czip";
-    QFile output_file(new_file_path);
-    if (!output_file.open(QIODevice::WriteOnly)) {
-        display_error("AES Decryption Error", "Could not create output file: " + new_file_path);
-        return false;
-    }
-    QDataStream out_stream(&output_file);
-    out_stream.setByteOrder(QDataStream::BigEndian);
-    out_stream.writeRawData(CZipFormat::MAGIC, sizeof(CZipFormat::MAGIC));
-    out_stream << CZipFormat::VERSION;
-    op_stack.removeFirst();
-    out_stream << (uint8_t)op_stack.size();
-    for(const auto op_code : op_stack) {
-        out_stream << (uint8_t)op_code;
-    }
-    out_stream << (uint16_t)original_filename_utf8.size();
-    out_stream.writeRawData(original_filename_utf8.constData(), original_filename_utf8.size());
-    output_file.write(decrypted_payload);
-    output_file.close();
-
+    // mark the current file for cleanup and remove the decryption operation from the stack
     if(job.currentFile != job.originalFile) {
         job.interimFiles.append(job.currentFile);
     }
-    job.currentFile = new_file_path;
+    op_stack.removeFirst();
+
+    // check if more operations remain in the stack
+    if(op_stack.isEmpty()) {
+        // this was the last step
+        QString final_path = job.outputFolder + original_filename;
+        QFile output_file(final_path);
+        if (!output_file.open(QIODevice::WriteOnly)) {
+            display_error("AES Decryption Error", "Could not create final output file: " + final_path);
+            return false;
+        }
+        output_file.write(decrypted_payload);
+        output_file.close();
+        job.currentFile = final_path;
+    } else {
+        QString base_name = QFileInfo(job.originalFile).baseName();
+        QString new_file_path = job.outputFolder + base_name + ".decrypted.czip";
+        QFile output_file(new_file_path);
+        if (!output_file.open(QIODevice::WriteOnly)) {
+            display_error("AES Decryption Error", "Could not create intermediate output file: " + new_file_path);
+            return false;
+        }
+
+        QDataStream out_stream(&output_file);
+        out_stream.setByteOrder(QDataStream::BigEndian);
+        out_stream.writeRawData(CZipFormat::MAGIC, sizeof(CZipFormat::MAGIC));
+        out_stream << CZipFormat::VERSION;
+        out_stream << (uint8_t)op_stack.size();
+        for(const auto op_code : op_stack) {
+            out_stream << (uint8_t)op_code;
+        }
+
+        out_stream << (uint16_t)original_filename_utf8.size();
+        out_stream.writeRawData(original_filename_utf8.constData(), original_filename_utf8.size());
+
+        output_file.write(decrypted_payload);
+        output_file.close();
+        job.currentFile = new_file_path;
+    }
 
     return true;
 }
@@ -1272,6 +1263,13 @@ void MainWindow::aura_error(AURA_Result result)
     QMessageBox::critical(this, title, message);
 }
 
+// Generates a cryptographically secure hex string of a given byte length.
+QString MainWindow::generate_random_hex_key(size_t byte_length)
+{
+    Botan::secure_vector<uint8_t> key_bytes = m_rng.random_vec(byte_length);
+    std::string hex_key = Botan::hex_encode(key_bytes);
+    return QString::fromStdString(hex_key);
+}
 
 //
 // ui slots
@@ -1301,32 +1299,23 @@ void MainWindow::on_slctImgBrowse_clicked()
 // key generation slots
 void MainWindow::on_aesGen_clicked()
 {
-    QCA::SymmetricKey key(32);
-    QCA::InitializationVector iv(16);
-    QString k(key.toByteArray().toHex().data());
-    QString v(iv.toByteArray().toHex().data());
-    QString kv = k + v;
-    ui->aesKey->setText(kv);
-    return;
+    // A 48-byte random hex string is suitable for a strong user-provided passphrase.
+    ui->aesKey->setText(generate_random_hex_key(48));
 }
 
 
 void MainWindow::on_auraGen_clicked()
 {
-    QCA::SymmetricKey key(32);
-    QString k(key.toByteArray().toHex().data());
-    ui->auraKey->setText(k);
-    return;
+    // AURA master key is 32 bytes (256-bit).
+    ui->auraKey->setText(generate_random_hex_key(32));
 }
 
 
 
 void MainWindow::on_simpGen_clicked()
 {
-    QCA::SymmetricKey key(8);
-    QString k(key.toByteArray().toHex().data());
-    ui->simpKey->setText(k);
-    return;
+    // SimpleCrypt key is 8 bytes (64-bit).
+    ui->simpKey->setText(generate_random_hex_key(8));
 }
 
 // checkbox state management slots
