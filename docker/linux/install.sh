@@ -1,16 +1,18 @@
 #!/bin/bash
 
+# Exit immediately if a command exits with a non-zero status
 set -e
 
-# Default values
+# --- Configuration ---
 SKIP_APPIMAGE=false
+DOCKER_IMAGE_NAME="czip-build-linux"
 
-# Dynamically determine CZIP_DIR based on script location.
+# Dynamically determine the cZip project directory based on this script's location
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 DEFAULT_CZIP_DIR=$(realpath "$SCRIPT_DIR/../..")
 CZIP_DIR="$DEFAULT_CZIP_DIR"
 
-# Parse command-line arguments
+# --- Argument Parsing ---
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --skip-appimage) SKIP_APPIMAGE=true ;;
@@ -20,60 +22,42 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-# Resolve full path
 CZIP_DIR=$(realpath "$CZIP_DIR")
 
-echo "Using cZip directory: $CZIP_DIR"
-echo "Skip AppImage: $SKIP_APPIMAGE"
+echo "================================================="
+echo "cZip Linux Build"
+echo "================================================="
+echo "-> cZip Project Directory: $CZIP_DIR"
+echo "-> Skip AppImage Creation: $SKIP_APPIMAGE"
+echo "-> Docker Image: $DOCKER_IMAGE_NAME"
+echo "-------------------------------------------------"
 
-# Ensure AURA and Botan source code is checked out before building.
-echo "Initializing and updating Git submodules..."
+# --- Submodule Initialization ---
+echo "⚙️ Initializing and updating Git submodules (AURA and Botan)..."
 cd "$CZIP_DIR"
 git submodule update --init --recursive
 cd "$SCRIPT_DIR"
 
-# Build Docker image
-echo "Building Docker image 'qt5.14-qca'..."
-docker build -t qt5.14-qca "$(dirname "$0")"
+# --- Docker Build ---
+echo "🏗️ Building Docker image '$DOCKER_IMAGE_NAME'..."
+docker build -t "$DOCKER_IMAGE_NAME" "$SCRIPT_DIR"
 
-# Clean previous build
-echo "Cleaning previous build directory..."
+# --- Cleanup ---
+echo "🧹 Cleaning previous build directory..."
 rm -rf "$CZIP_DIR/src/build"
 
-# Run build
-echo "Running build..."
+# --- Docker Run ---
+echo "🚀 Running build script inside the container..."
 docker run --rm -it \
+  --cap-add SYS_ADMIN \
+  --device /dev/fuse \
+  --security-opt apparmor:unconfined \
   -v "$CZIP_DIR":/project \
-  -w /project/build/linux \
-  qt5.14-qca \
-  bash -c "\
-    export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/opt/Qt/5.15.2/gcc_64/lib/pkgconfig && \
-    export LD_LIBRARY_PATH=/usr/lib:/opt/Qt/5.15.2/gcc_64/lib && \
-    export QMAKEFEATURES=/usr/mkspecs/features && \
-    /opt/Qt/5.15.2/gcc_64/bin/qmake ../../src/czip.pro && \
-    make"
+  -v "$SCRIPT_DIR/build.sh":/project/build.sh \
+  -e "SKIP_APPIMAGE=${SKIP_APPIMAGE}" \
+  "$DOCKER_IMAGE_NAME" \
+  bash /project/build.sh
 
-# Run AppImage step (if not skipped)
-if [ "$SKIP_APPIMAGE" = false ]; then
-  echo "Creating AppImage..."
-
-  BOTAN_INSTALL_LIB_PATH="/project/external/AURA/build/deps_install/lib"
-
-  docker run --rm -it \
-    --device /dev/fuse \
-    --cap-add SYS_ADMIN \
-    --security-opt apparmor:unconfined \
-    -v "$CZIP_DIR":/project \
-    -w /project/build/linux \
-    qt5.14-qca \
-    bash -c "\
-      export LD_LIBRARY_PATH=${BOTAN_INSTALL_LIB_PATH}:$LD_LIBRARY_PATH && \
-      cp /project/assets/czip.desktop . && \
-      cp /project/assets/czip.png . && \
-      /usr/local/bin/linuxdeployqt ./czip -appimage && \
-      mv cZip-*.AppImage cZip.AppImage"
-else
-  echo "AppImage creation skipped."
-fi
-
-echo "Done!"
+echo "✅ Done!"
+echo ""
+echo "Find your build artifacts in: $CZIP_DIR/src/build/"

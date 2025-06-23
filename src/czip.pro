@@ -39,53 +39,60 @@ win32 {
     ICON = ../assets/czip.icns
 }
 
-# AURA
-AURA_PROJECT_DIR = $$PWD/../external/AURA
-AURA_BUILD_DIR   = $$AURA_PROJECT_DIR/build
-AURA_INSTALL_DIR = $$AURA_BUILD_DIR/deps_install
-
-win32:msvc {
-    aura_build.target = $$AURA_INSTALL_DIR/lib/AURA.lib
+use_prebuilt_deps {
+    INCLUDEPATH += $$DEPS_PREFIX/include
+    INCLUDEPATH += $$DEPS_PREFIX/include/botan-2
+    DEPENDPATH += $$DEPS_PREFIX/include
+    LIBS += -L$$DEPS_PREFIX/lib -lAURA -lbotan-2
 } else {
-    aura_build.target = $$AURA_INSTALL_DIR/lib/libAURA.a
-}
+    # AURA
+    AURA_PROJECT_DIR = $$PWD/../external/AURA
+    AURA_BUILD_DIR   = $$AURA_PROJECT_DIR/build
+    AURA_INSTALL_DIR = $$AURA_BUILD_DIR/deps_install
 
-QMAKE_EXTRA_TARGETS += aura_build
-PRE_TARGETDEPS += $$aura_build.target
-
-win32 {
-    msvc {
-        CMAKE_GENERATOR = "NMake Makefiles"
-        BOTAN_ARGS = # MSVC is Botan's default
-
-        NATIVE_SCRIPT_PATH = $$shell_path($$AURA_PROJECT_DIR/build.bat)
-        NATIVE_AURA_BUILD_DIR = $$shell_path($$AURA_BUILD_DIR)
-        NATIVE_AURA_PROJECT_DIR = $$shell_path($$AURA_PROJECT_DIR)
-
-        VCVARS_PATH = \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\"
-
-        aura_build.commands = C:/Windows/System32/cmd.exe /c "call $$VCVARS_PATH && $$NATIVE_SCRIPT_PATH \"$$NATIVE_AURA_BUILD_DIR\" \"$$NATIVE_AURA_PROJECT_DIR\" \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\" -DAURA_DISABLE_TESTS=ON"
-
+    win32:msvc {
+        aura_build.target = $$AURA_INSTALL_DIR/lib/AURA.lib
     } else {
-        CMAKE_GENERATOR = "MinGW Makefiles"
-        BOTAN_ARGS = --os=mingw;--disable-modules=certstor_system,certstor_system_windows
-
-        # AURA has a build .sh for mingw
-        aura_build.commands = sh $$AURA_PROJECT_DIR/build.sh $$AURA_BUILD_DIR $$AURA_PROJECT_DIR \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\"
+        aura_build.target = $$AURA_INSTALL_DIR/lib/libAURA.a
     }
-} else:unix {
-    aura_build.commands = \
-        cmake -B $$AURA_BUILD_DIR $$AURA_PROJECT_DIR && \
-        cmake --build $$AURA_BUILD_DIR --target botan_dependency && \
-        cmake --build $$AURA_BUILD_DIR --target aura_library
-}
 
-INCLUDEPATH += $$AURA_INSTALL_DIR/include
-INCLUDEPATH += $$AURA_INSTALL_DIR/include/botan-2
-LIBS += -L$$AURA_INSTALL_DIR/lib
+    QMAKE_EXTRA_TARGETS += aura_build
+    PRE_TARGETDEPS += $$aura_build.target
 
-msvc {
-    LIBS += AURA.lib botan.lib
-} else {
-    LIBS += -lAURA -lbotan-2
+    win32 {
+        msvc {
+            CMAKE_GENERATOR = "NMake Makefiles"
+            BOTAN_ARGS = # MSVC is Botan's default
+
+            NATIVE_SCRIPT_PATH = $$shell_path($$AURA_PROJECT_DIR/build.bat)
+            NATIVE_AURA_BUILD_DIR = $$shell_path($$AURA_BUILD_DIR)
+            NATIVE_AURA_PROJECT_DIR = $$shell_path($$AURA_PROJECT_DIR)
+
+            VCVARS_PATH = \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\"
+
+            aura_build.commands = C:/Windows/System32/cmd.exe /c "call $$VCVARS_PATH && $$NATIVE_SCRIPT_PATH \"$$NATIVE_AURA_BUILD_DIR\" \"$$NATIVE_AURA_PROJECT_DIR\" \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\" -DAURA_DISABLE_TESTS=ON"
+
+        } else {
+            CMAKE_GENERATOR = "MinGW Makefiles"
+            BOTAN_ARGS = --os=mingw;--disable-modules=certstor_system,certstor_system_windows
+
+            # AURA has a build .sh for mingw
+            aura_build.commands = sh $$AURA_PROJECT_DIR/build.sh $$AURA_BUILD_DIR $$AURA_PROJECT_DIR \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\"
+        }
+    } else:unix {
+        aura_build.commands = \
+            cmake -B $$AURA_BUILD_DIR $$AURA_PROJECT_DIR && \
+            cmake --build $$AURA_BUILD_DIR --target botan_dependency && \
+            cmake --build $$AURA_BUILD_DIR --target aura_library
+    }
+
+    INCLUDEPATH += $$AURA_INSTALL_DIR/include
+    INCLUDEPATH += $$AURA_INSTALL_DIR/include/botan-2
+    LIBS += -L$$AURA_INSTALL_DIR/lib
+
+    msvc {
+        LIBS += AURA.lib botan.lib
+    } else {
+        LIBS += -lAURA -lbotan-2
+    }
 }

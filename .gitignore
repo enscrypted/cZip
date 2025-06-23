@@ -69,3 +69,4 @@ qrc_*.cpp
 /src/build*/
 build-*/
 build/
+deps_install/

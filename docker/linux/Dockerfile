@@ -1,28 +1,24 @@
+# Use a stable base image like Ubuntu 20.04 LTS
 FROM ubuntu:20.04
 
+# Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
-ENV QT_VERSION=5.15.2
-ENV QT_DIR=/opt/Qt/${QT_VERSION}/gcc_64
 
-# Install deps
+# Install essential build tools, git, wget, python, cmake, ninja, and Qt dependencies
 RUN apt-get update && apt-get install -y \
-    python3-pip \
     build-essential \
     git \
-    ninja-build \
-    cmake \
-    libssl-dev \
-    libgcrypt20-dev \
-    zlib1g-dev \
     wget \
-    curl \
-    ca-certificates \
-    pkg-config \
-    libgl1-mesa-dev \
-    libfuse2 \
+    cmake \
+    ninja-build \
+    python3 \
+    python3-pip \
+    python3-dev \
     fuse \
-    libx11-xcb1 \
-    libxrender1 \
+    patchelf \
+    libgl1-mesa-dev \
+    libxcb-xinerama0 \
+    libglib2.0-0 \
     libfontconfig1 \
     libxcb1 \
     libxcb-render0 \
@@ -37,28 +33,21 @@ RUN apt-get update && apt-get install -y \
     libxcb-shape0 \
     libxcb-sync1 \
     libxkbcommon-x11-0 \
-    libdbus-1-3
+    libdbus-1-3 \
+    file \
+    --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install aqtinstall to get Qt non-interactively
-RUN pip3 install aqtinstall==3.1.1
+# Install aqtinstall to fetch Qt
+RUN python3 -m pip install aqtinstall==3.1.1
 
-# Install Qt 5.15.2 (gcc_64 desktop)
-RUN aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/Qt
+# Download and install Qt 5.15.2 into the /opt/ directory
+RUN aqt install-qt linux desktop 5.15.2 gcc_64 -O /opt/Qt
 
-# Set environment variables for Qt tools
-ENV PATH="${QT_DIR}/bin:${PATH}"
-ENV CMAKE_PREFIX_PATH="${QT_DIR}"
-
-# Build and install QCA
-RUN git clone https://github.com/KDE/qca.git /tmp/qca && \
-    mkdir -p /tmp/qca/build && cd /tmp/qca/build && \
-    cmake .. -GNinja \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DQCA_SUFFIX=qt5 && \
-    ninja && ninja install && \
-    cd / && rm -rf /tmp/qca
-
-# Install linuxdeployqt
+# Download and install the linuxdeployqt AppImage utility
 RUN wget -O /usr/local/bin/linuxdeployqt https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage && \
     chmod a+x /usr/local/bin/linuxdeployqt
+
+# Set a default working directory for the container
+WORKDIR /project
