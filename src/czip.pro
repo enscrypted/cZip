@@ -44,7 +44,12 @@ AURA_PROJECT_DIR = $$PWD/../external/AURA
 AURA_BUILD_DIR   = $$AURA_PROJECT_DIR/build
 AURA_INSTALL_DIR = $$AURA_BUILD_DIR/deps_install
 
-aura_build.target = $$AURA_INSTALL_DIR/lib/libAURA.a
+win32:msvc {
+    aura_build.target = $$AURA_INSTALL_DIR/lib/AURA.lib
+} else {
+    aura_build.target = $$AURA_INSTALL_DIR/lib/libAURA.a
+}
+
 QMAKE_EXTRA_TARGETS += aura_build
 PRE_TARGETDEPS += $$aura_build.target
 
@@ -57,8 +62,9 @@ win32 {
         NATIVE_AURA_BUILD_DIR = $$shell_path($$AURA_BUILD_DIR)
         NATIVE_AURA_PROJECT_DIR = $$shell_path($$AURA_PROJECT_DIR)
 
-        # AURA has a build .bat for msvc
-        aura_build.commands = $$NATIVE_SCRIPT_PATH \"$$NATIVE_AURA_BUILD_DIR\" \"$$NATIVE_AURA_PROJECT_DIR\" \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\" -DAURA_DISABLE_TESTS=ON
+        VCVARS_PATH = \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\"
+
+        aura_build.commands = C:/Windows/System32/cmd.exe /c "call $$VCVARS_PATH && $$NATIVE_SCRIPT_PATH \"$$NATIVE_AURA_BUILD_DIR\" \"$$NATIVE_AURA_PROJECT_DIR\" \"$$CMAKE_GENERATOR\" \"$$BOTAN_ARGS\" -DAURA_DISABLE_TESTS=ON"
 
     } else {
         CMAKE_GENERATOR = "MinGW Makefiles"
